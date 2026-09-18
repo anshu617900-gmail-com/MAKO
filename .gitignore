@@ -1,0 +1,46 @@
+﻿# Rust build artifacts
+/target/
+/target_*/
+**/target/
+
+# Cargo
+Cargo.lock
+
+# IDE/Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+*.err.log
+
+# MAKO specific
+*.key
+*.pem
+.mako_node_*.key
+.mako_gateway.key
+
+# Test artifacts
+test_*.ps1
+stress_test.ps1
+
+# Build output
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Wasm build output
+**/wasm32-unknown-unknown/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
