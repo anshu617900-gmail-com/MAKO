@@ -61,6 +61,199 @@ Tested on bare-metal hardware (Windows 11, Intel Core i7, 200 concurrent HTTP re
 | **Failover Convergence** | N/A | **< 2.0 ms** | 30s+ (DNS/ALB health check lag) |
 | **Compute Overhead** | $0.00 (Self-hosted) | **$0.00** (Decentralized Mesh) | Continuous per-millisecond pricing |
 
+---## Topology & System Design
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                                 MAKO MESH                                   │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│   ┌──────────────┐      LibP2P Mesh (Kademlia DHT + mDNS)      ┌────────┐   │
+│   │   CLIENTS    │ ◄──────────────────────────────────────────► │ WORKER │   │
+│   │  (HTTP/JSON) │                                              │  NODE  │   │
+│   └──────┬───────┘                                              │ (4001) │   │
+│          │                                                      └────┬───┘   │
+│          │                                                           │       │
+│    ┌─────▼──────┐                                          ┌─────────▼─────┐ │
+│    │  GATEWAY   │ ◄── Round-Robin + Quorum Failover ──────► │ WORKER NODE   │ │
+│    │  (Axum)    │ ◄── Broadcast Deployment ────────────────► │ (4003)        │ │
+│    │  :8080     │                                          └───────────────┘ │
+│    └────────────┘                                                           │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Worker Runtime Loop
+
+To prevent compute workloads from blocking the P2P networking thread, MAKO decouples network polling from compute threads via an asynchronous actor loop:
+
+```
+libp2p Swarm Event Loop (Non-blocking Tokio loop)
+     │
+     ├──> [Event] Peer Discovery / DHT Route Update
+     └──> [Event] Incoming Ingress Execution Request
+               │
+               ▼
+     Acquire Bounded Permit (Arc<Semaphore>, limit: 16)
+               │
+               ▼
+     tokio::task::spawn_blocking
+          ├── Instantiate Sandboxed Wasmtime Store
+          ├── Fuel Injection (clamped: 100,000 units)
+          ├── Execute Module with 500ms Wall-Clock Timeout
+          └── Yield Result -> Release Permit -> Return P2P Response
+```
+
 ---
+
+## Quickstart
+
+### Prerequisites
+* Rust 2021 Edition (`cargo >= 1.75`) or pre-compiled `mako.exe` binary.
+
+### 1. Initialize Cluster Daemon
+Spin up the initial seed peer on network port `4001`:
+
+```bash
+cargo run --release -- daemon --port 4001
+```
+
+### 2. Launch HTTP Ingress Gateway
+Boot an Axum HTTP gateway on port `8080`, binding to the seed worker:
+
+```bash
+cargo run --release -- gateway \
+  --port 8080 \
+  --p2p-port 4002 \
+  --bootstrap /ip4/127.0.0.1/tcp/4001/p2p/<DAEMON_PEER_ID>
+```
+
+### 3. Deploy Guest Module
+Deploy a compiled WebAssembly bytecode module to the cluster:
+
+```bash
+cargo run --release -- deploy my_logic.wasm
+# Returns SHA-256 Function ID (e.g. 8f3c9e...)
+```
+
+### 4. Invoke Over HTTP
+Invoke the function via standard HTTP POST:
+
+```bash
+curl -X POST "http://localhost:8080/invoke/<FUNCTION_ID>?func=handle" \
+  -H "Authorization: Bearer mako-secret-dev-key" \
+  -H "Content-Type: application/json" \
+  -d '{"value": 42}'
+```
+
+---
+
+## Multi-Worker Horizontal Scaling
+
+```bash
+# Terminal 1: Seed Worker
+cargo run --release -- daemon --port 4001
+
+# Terminal 2: Secondary Worker (discovers seed via multiaddr)
+cargo run --release -- daemon --port 4003 --bootstrap /ip4/127.0.0.1/tcp/4001/p2p/<SEED_PEER_ID>
+
+# Terminal 3: Gateway (automatically balances load between 4001 & 4003)
+cargo run --release -- gateway --port 8080 --p2p-port 4002 --bootstrap /ip4/127.0.0.1/tcp/4001/p2p/<SEED_PEER_ID>
+```
+
+---
+
+## Writing Guest Modules (Rust)
+
+MAKO guest modules compile directly to the standard `wasm32-unknown-unknown` target:
+
+```rust
+use serde::{Deserialize, Serialize};
+
+#[derive(Deserialize)]
+struct Input {
+    value: i32,
+}
+
+#[derive(Serialize)]
+struct Output {
+    result: i32,
+    processed_by: &'static str,
+}
+
+#[no_mangle]
+pub extern "C" fn alloc(size: usize) -> *mut u8 {
+    let mut buf = Vec::with_capacity(size);
+    let ptr = buf.as_mut_ptr();
+    std::mem::forget(buf);
+    ptr
+}
+
+#[no_mangle]
+pub extern "C" fn handle(ptr: *mut u8, len: usize) -> u64 {
+    let slice = unsafe { std::slice::from_raw_parts(ptr, len) };
+    let input: Input = serde_json::from_slice(slice).unwrap();
+
+    let output = Output {
+        result: input.value * 2,
+        processed_by: "mako-worker",
+    };
+
+    let out_bytes = serde_json::to_vec(&output).unwrap();
+    let out_ptr = out_bytes.as_ptr() as u64;
+    let out_len = out_bytes.len() as u64;
+    std::mem::forget(out_bytes);
+
+    (out_ptr << 32) | out_len
+}
+```
+
+Compile command:
+```bash
+cargo build --target wasm32-unknown-unknown --release
+```
+
+---
+
+## CLI & HTTP Interface
+
+### CLI Reference
+
+| Command | Arguments | Description |
+| :--- | :--- | :--- |
+| `mako daemon` | `--port <PORT> [--bootstrap <ADDR>]` | Starts P2P execution worker. |
+| `mako gateway` | `--port <PORT> --p2p-port <PORT> --bootstrap <ADDR>` | Starts HTTP gateway interface. |
+| `mako deploy` | `<FILE.WASM> [--gateway-url <URL>]` | Deploys module to cluster. |
+| `mako dispatch` | `<PEER_ADDR> <FILE.WASM> --func <NAME>` | Direct P2P module invocation. |
+| `mako run` | `<FILE.WASM> --func <NAME> --args <ARGS>` | Local execution without P2P mesh. |
+
+### HTTP Gateway Endpoints
+
+| Endpoint | Method | Authorization | Description |
+| :--- | :--- | :--- | :--- |
+| `/deploy` | `POST` | Bearer Token | Deploys raw or multipart `.wasm` module. |
+| `/invoke/:hash` | `POST` | Bearer Token | Dispatches execution request across worker cluster. |
+| `/execute` | `POST` | Bearer Token | One-shot atomic deploy and execution. |
+| `/peers` | `GET` | None | Returns active peer topology and mesh health. |
+
+---
+
+## Architectural Invariants & Constraints
+
+- **Stateless Guest Boundary**: MAKO workers are strictly ephemeral. Persistent data must be offloaded to external distributed stores (e.g. S3/MinIO or decentralized block storage).
+- **Strict Bounded Ceiling**: Guest modules are clamped to 16MB linear memory and 100,000 fuel units to guarantee deterministic QoS and prevent noisy-neighbor saturation.
+- **P2P Convergence**: Intra-subnet clustering utilizes local mDNS for zero-config discovery. WAN topologies require configured LibP2P bootstrap relays.
+
+---
+
+## Security Disclosure
+
+If you discover a vulnerability or sandbox escape vector within MAKO, please report it via confidential security disclosure. Refer to `SECURITY.md` for guidelines.
+
+---
+
+## License
+
+MAKO is licensed under the [MIT License](LICENSE).
 
 ## Topology & System Design
