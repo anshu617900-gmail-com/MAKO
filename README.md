@@ -229,6 +229,14 @@ mako/
 
 ---
 
+## ⚖️ System Architecture Constraints & Trade-offs
+
+- **Stateless Execution**: MAKO worker nodes are strictly ephemeral. Persistent data must be pushed to external stores (e.g., S3/Blob storage).
+- **Strict Bounded Ceiling**: Guest modules are clamped to 16MB linear memory and 100,000 fuel units to guarantee deterministic QoS and prevent worker saturation.
+- **Discovery Latency**: Intra-node clustering relies on local mDNS for zero-config subnets; WAN traversal requires configured bootstrap relay nodes over LibP2P.
+
+---
+
 ## 📄 License
 
 MIT License — see [LICENSE](LICENSE) for details.
