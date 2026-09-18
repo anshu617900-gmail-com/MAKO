@@ -1,4 +1,6 @@
-# MAKO ⚡ — Decentralized Serverless Edge Runtime
+<p align="center">
+  <img src=""C:\Users\anshu\Downloads\gemini-svg.svg"" alt="MAKO Logo" width="60%" />
+</p># MAKO ⚡ — Decentralized Serverless Edge Runtime
 
 > A masterless, zero-cloud-bill AWS Lambda alternative powered by Rust, WebAssembly, and LibP2P.
 
