@@ -1,255 +1,66 @@
- MAKO ⚡ — Decentralized Serverless Edge Runtime
+<div align="center">
 
-> A masterless, zero-cloud-bill AWS Lambda alternative powered by Rust, WebAssembly, and LibP2P.
+  <img src="https://private-user-images.githubusercontent.com/256764231/654859123-32272332-2a35-4120-a00d-5bc295332c64.svg?jwt=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmF3LmdpdGh1YnVzZXJjb250ZW50LmNvbSIsImtleSI6ImtleTUiLCJleHAiOjE3ODk3NTg3NDIsIm5iZiI6MTc4OTc1ODQ0MiwicGF0aCI6Ii8yNTY3NjQyMzEvNjU0ODU5MTIzLTMyMjcyMzMyLTJhMzUtNDEyMC1hMDBkLTViYzI5NTMzMmM2NC5zdmc_WC1BbXotQWxnb3JpdGhtPUFXUzQtSE1BQy1TSEEyNTYmWC1BbXotQ3JlZGVudGlhbD1BS0lBVkNPRFlMU0E1M1BRSzRaQSUyRjIwMjYwOTE4JTJGdXMtZWFzdC0xJTJGczMlMkZhd3M0X3JlcXVlc3QmWC1BbXotRGF0ZT0yMDI2MDkxOFQxOTA3MjJaJlgtQW16LUV4cGlyZXM9MzAwJlgtQW16LVNpZ25hdHVyZT01NDA1OWJkMjUxZGQ0YjkwMmZiZjE4MWZmMTRlMGVhOGQ4MDY5ODBmNjBjOTBkZmEzOTFmZmI3Y2U0NThiZmFlJlgtQW16LVNpZ25lZEhlYWRlcnM9aG9zdCZyZXNwb25zZS1jb250ZW50LXR5cGU9aW1hZ2UlMkZzdmclMkJ4bWwifQ.yNOQt0BfLgTpmYfbm07ApTB74OQiq3U2pc3-QSDu0Qc" alt="MAKO" width="220" />
 
----
+  <br />
+  <br />
 
-## 🚀 Key Features
+  <p align="center">
+    <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-zinc.svg?style=flat" alt="License: MIT"></a>
+    <a href="https://www.rust-lang.org/"><img src="https://img.shields.io/badge/Language-Rust%202021-zinc.svg?style=flat" alt="Rust 2021"></a>
+    <a href="https://github.com/bytecodealliance/wasmtime"><img src="https://img.shields.io/badge/Core-Wasmtime%20Engine-zinc.svg?style=flat" alt="Wasmtime"></a>
+    <a href="https://libp2p.io/"><img src="https://img.shields.io/badge/Mesh-LibP2P%20DHT-zinc.svg?style=flat" alt="LibP2P"></a>
+    <a href="https://github.com/anshu617900-gmail-com/MAKO/releases"><img src="https://img.shields.io/badge/Release-v0.1.0--alpha-zinc.svg?style=flat" alt="v0.1.0-alpha"></a>
+  </p>
 
-| Feature | Description |
-|---------|-------------|
-| **Sub-millisecond cold start & execution** | Wasmtime sandbox with fuel metering — no V8/SpiderMonkey overhead |
-| **Pure P2P decentralized mesh** | LibP2P + Kademlia DHT — no master node, no central coordinator |
-| **Automatic quorum failover** | Sub-millisecond failover across worker nodes on crash/timeout |
-| **Fuel-metered sandboxing** | 16MB memory ceiling, 500ms execution timeout per invocation |
-| **Bounded concurrency** | `Arc<Semaphore>` 16-permit isolation — heavy compute never blocks P2P heartbeats |
-| **Round-robin load balancing** | Gateway distributes requests evenly across all discovered workers |
-| **Content-addressed modules** | SHA-256 hash = Function ID — immutable, cacheable, verifiable |
-| **Bearer token auth** | Optional `MAKO_API_KEY` for `/deploy` and `/invoke` protection |
+  <p align="center">
+    <b>A masterless, decentralized WebAssembly edge runtime. Deterministic sandboxing, sub-millisecond cold starts, and zero-coordination failover over a peer-to-peer Kademlia DHT.</b>
+  </p>
 
----
-
-## 📊 Verified Benchmarks
-
-| Metric | Single Worker | Dual-Worker Cluster | AWS Lambda Equivalent |
-| :--- | :---: | :---: | :---: |
-| **Throughput (RPS)** | ~45 RPS | **70.3 RPS (1.56×)** | Cold-start dependent |
-| **Avg Latency** | 24 ms | **13.1 ms** | ~200–800 ms |
-| **P99 Latency** | 525 ms | **91.5 ms** | ~1,200 ms |
-| **Failover Time** | N/A | **<2 ms** | 30s+ (DNS lag) |
-| **Infrastructure Cost** | **$0** | **$0** | Per-millisecond bill |
-
-> Tested on Windows 11, Intel i7, 200 concurrent requests, `json_transform.wasm` (116 KB), fuel=50,000.
+  <p align="center">
+    <a href="#overview">Overview</a> •
+    <a href="#architectural-primitives">Primitives</a> •
+    <a href="#empirical-benchmarks">Benchmarks</a> •
+    <a href="#topology--system-design">Topology</a> •
+    <a href="#quickstart">Quickstart</a> •
+    <a href="#invariants--constraints">Invariants</a>
+  </p>
 
 ---
 
-## 🏗 Architecture
+</div>
 
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                              MAKO CLUSTER                                    │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                              │
-│   ┌──────────────┐      LibP2P Mesh (Kademlia DHT + mDNS)      ┌────────┐   │
-│   │   CLIENTS    │ ◄──────────────────────────────────────────► │ WORKER │   │
-│   │  (HTTP/JSON) │                                              │  NODE  │   │
-│   └──────┬───────┘                                              │ (4001) │   │
-│          │                                                      └────┬───┘   │
-│          │                                                           │       │
-│    ┌─────▼──────┐                                          ┌──────────▼────┐   │
-│    │  GATEWAY   │ ◄── Round-Robin + Failover ─────────────► │ WORKER NODE   │   │
-│    │  (Axum)    │ ◄── Broadcast Deploy ────────────────────► │ (4003)        │   │
-│    │ :8080      │                                            └───────────────┘   │
-│    └────────────┘                                                                 │
-│                                                                              │
-└─────────────────────────────────────────────────────────────────────────────┘
+## Overview
 
-Worker Node Internals:
-┌────────────────────────────────────────────────────────────┐
-│  libp2p Swarm Event Loop (never blocked)                   │
-│       │                                                    │
-│       ▼                                                    │
-│  ┌────────────────────────────────────────────────────┐   │
-│  │ tokio::select! {                                   │   │
-│  │   swarm.select_next_some() => handle P2P events    │   │
-│  │   resp_rx.recv() => send deferred responses        │   │
-│  │ }                                                   │   │
-│  └────────────────────────────────────────────────────┘   │
-│       │                                                    │
-│       ▼ (spawn)                                           │
-│  ┌────────────────────────────────────────────────────┐   │
-│  │ Semaphore (16 permits) → acquire → spawn_blocking  │   │
-│  │   Wasmtime.execute_module() with 500ms timeout     │   │
-│  │   → release permit → send response via mpsc        │   │
-│  └────────────────────────────────────────────────────┘   │
-└────────────────────────────────────────────────────────────┘
-```
+MAKO is a distributed serverless runtime designed from first principles to eliminate centralized orchestration overhead. Traditional serverless offerings (e.g., AWS Lambda, Google Cloud Functions) rely on heavy container virtualizations (microVMs), complex centralized control planes (Kubernetes/Borg), and opaque per-millisecond billing models.
+
+MAKO replaces centralized orchestrators with an autonomous, masterless peer-to-peer mesh. By pairing the **Bytecode Alliance Wasmtime** runtime with **LibP2P Kademlia DHT**, compute nodes act as sovereign, self-routing peers capable of accepting HTTP ingress, executing sandboxed guest bytecode, and routing requests without a single point of failure.
+
+### Core Primitives
+
+| Primitive | Implementation | Operational Guarantee |
+| :--- | :--- | :--- |
+| **Execution Sandboxing** | Wasmtime Engine (JIT) | Bounded linear memory, zero V8/SpiderMonkey overhead. |
+| **Topology** | LibP2P Kademlia DHT + mDNS | Decentralized peer discovery; no master nodes or coordinators. |
+| **Fault Tolerance** | Autonomous Quorum Routing | <2ms dynamic failover rerouting upon peer crash or timeout. |
+| **Resource Metering** | Explicit Fuel Counter | Hard-bounded CPU allocation (100,000 fuel ceiling) per invocation. |
+| **Concurrency Shield** | `Arc<Semaphore>` Isolation | Bounded execution permits (16) protect P2P network heartbeats from compute saturation. |
+| **Module Addressing** | SHA-256 Content-Addressing | Immutable, deterministic, and cryptographic guest module verification. |
 
 ---
 
-## ⚡ Quickstart (10 seconds)
+## Empirical Benchmarks
 
-```bash
-# 1. Start Worker Daemon (P2P port 4001)
-cargo run --release -- daemon --port 4001
+Tested on bare-metal hardware (Windows 11, Intel Core i7, 200 concurrent HTTP requests executing a 116 KB `json_transform.wasm` module at a 50,000 fuel baseline).
 
-# 2. Start HTTP Ingress Gateway (HTTP 8080, P2P 4002, bootstrap to daemon)
-cargo run --release -- gateway --port 8080 --p2p-port 4002 --bootstrap /ip4/127.0.0.1/tcp/4001/p2p/<DAEMON_PEER_ID>
-
-# 3. Deploy a Wasm module (returns Function ID)
-cargo run --release -- deploy my_logic.wasm
-# Function ID: a1b2c3d4e5f6
-
-# 4. Invoke via HTTP (Bearer token optional, default: mako-secret-dev-key)
-curl -X POST http://localhost:8080/invoke/a1b2c3d4e5f6?func=handle \
-  -H "Authorization: Bearer mako-secret-dev-key" \
-  -H "Content-Type: application/json" \
-  -d '{"data": 1}'
-```
-
-### Multi-Worker Cluster (Horizontal Scaling)
-
-```bash
-# Terminal 1: Seed Worker
-cargo run --release -- daemon --port 4001
-
-# Terminal 2: Additional Worker (bootstraps to seed)
-cargo run --release -- daemon --port 4003 --bootstrap /ip4/127.0.0.1/tcp/4001/p2p/<SEED_PEER_ID>
-
-# Terminal 3: Gateway (discovers both workers automatically)
-cargo run --release -- gateway --port 8080 --p2p-port 4002 --bootstrap /ip4/127.0.0.1/tcp/4001/p2p/<SEED_PEER_ID>
-```
+| Evaluation Metric | Single Node Worker | Dual-Worker Cluster | Centralized Cloud Baseline (AWS Lambda) |
+| :--- | :--- | :--- | :--- |
+| **Throughput (RPS)** | ~45.0 RPS | **70.3 RPS** (1.56× scale) | Cold-start dependent |
+| **Average Latency** | 24.0 ms | **13.1 ms** | ~200 – 800 ms (VPC cold start) |
+| **Tail Latency (P99)** | 525.0 ms | **91.5 ms** | ~1,200 ms |
+| **Failover Convergence** | N/A | **< 2.0 ms** | 30s+ (DNS/ALB health check lag) |
+| **Compute Overhead** | $0.00 (Self-hosted) | **$0.00** (Decentralized Mesh) | Continuous per-millisecond pricing |
 
 ---
 
-## 🔐 Security Guardrails (Production Ready)
-
-| Guardrail | Limit | Behavior |
-|-----------|-------|----------|
-| **Payload Size** | 2 MB | HTTP 413 if exceeded |
-| **Fuel Ceiling** | 100,000 units | Auto-clamped from query param |
-| **Execution Timeout** | 500 ms | Worker aborts, returns error, releases semaphore |
-| **Bearer Auth** | `MAKO_API_KEY` env | 401 Unauthorized on `/deploy` & `/invoke` |
-
----
-
-## 📦 Writing Wasm Modules (Rust)
-
-```rust
-// Cargo.toml
-[package]
-name = "my_logic"
-crate-type = ["cdylib"]
-
-[dependencies]
-serde = { version = "1.0", features = ["derive", "alloc"] }
-serde_json = { version = "1.0", features = ["alloc"] }
-
-// lib.rs
-use serde::{Deserialize, Serialize};
-
-#[derive(Deserialize)]
-struct Input { value: i32 }
-
-#[derive(Serialize)]
-struct Output { result: i32, processed_by: &'static str }
-
-#[no_mangle]
-pub extern "C" fn alloc(size: usize) -> *mut u8 { ... }
-
-#[no_mangle]
-pub extern "C" fn dealloc(ptr: *mut u8, size: usize) { ... }
-
-#[no_mangle]
-pub extern "C" fn handle(ptr: *mut u8, len: usize) -> u64 {
-    // 1. Read input from linear memory
-    // 2. Deserialize JSON
-    // 3. Compute
-    // 4. Serialize result
-    // 5. Alloc + write to guest memory
-    // 6. Return packed (ptr << 32) | len
-}
-```
-
-Compile:
-```bash
-cargo build --target wasm32-unknown-unknown --release
-# → target/wasm32-unknown-unknown/release/my_logic.wasm
-```
-
----
-
-## 🛠 CLI Reference
-
-| Command | Description |
-|---------|-------------|
-| `mako daemon --port 4001` | Start P2P worker node |
-| `mako gateway --port 8080 --p2p-port 4002 --bootstrap <ADDR>` | Start HTTP gateway |
-| `mako deploy file.wasm [--gateway-url URL] [--peer <ADDR>]` | Deploy module to cluster |
-| `mako dispatch <PEER_ADDR> file.wasm --func handle --args 1 2` | Direct P2P invocation |
-| `mako run file.wasm --func handle --args 1 2` | Local execution (no P2P) |
-
----
-
-## 🌐 HTTP API
-
-| Endpoint | Method | Auth | Description |
-|----------|--------|------|-------------|
-| `/deploy` | POST | Bearer | Deploy Wasm module (binary or multipart) |
-| `/invoke/:hash` | POST | Bearer | Invoke deployed function |
-| `/execute` | POST | Bearer | One-shot deploy + invoke |
-| `/peers` | GET | — | List connected worker peers |
-
-**Invoke Query Params:**
-- `func` — exported function name (default: `multiply`)
-- `fuel` — fuel units (default: 50,000, max: 100,000)
-- `max_memory_mb` — memory limit (default: 16)
-
----
-
-## 📂 Project Structure
-
-```
-mako/
-├── src/
-│   └── main.rs          # Single-file: daemon, gateway, CLI, Wasmtime runner
-├── fixtures/
-│   ├── multiply.wat     # Simple multiply demo (WAT)
-│   └── json_transform/  # JSON transform demo (Rust → Wasm)
-│       ├── Cargo.toml
-│       └── src/lib.rs
-├── test_json_payload.ps1      # E2E JSON payload test
-├── test_failover.ps1          # Zero-downtime failover test
-├── test_cluster_scaling.ps1   # Horizontal scaling benchmark
-├── test_guardrails.ps1        # Security guardrail validation
-├── stress_test.ps1            # 200-request concurrency test
-├── Cargo.toml
-└── README.md
-```
-
----
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
----
-
-## ⚖️ System Architecture Constraints & Trade-offs
-
-- **Stateless Execution**: MAKO worker nodes are strictly ephemeral. Persistent data must be pushed to external stores (e.g., S3/Blob storage).
-- **Strict Bounded Ceiling**: Guest modules are clamped to 16MB linear memory and 100,000 fuel units to guarantee deterministic QoS and prevent worker saturation.
-- **Discovery Latency**: Intra-node clustering relies on local mDNS for zero-config subnets; WAN traversal requires configured bootstrap relay nodes over LibP2P.
-
----
-
-## 📄 License
-
-MIT License — see [LICENSE](LICENSE) for details.
-
----
-
-## 🙏 Acknowledgments
-
-- [Wasmtime](https://wasmtime.dev/) — Fast, secure WebAssembly runtime
-- [LibP2P](https://libp2p.io/) — Modular P2P networking stack
-- [Axum](https://github.com/tokio-rs/axum) — Ergonomic HTTP server
-- [Tokio](https://tokio.rs/) — Async runtime for Rust
-
----
-
-**MAKO** — *Sovereign compute at the edge. No cloud bills. No masters. Just code.*
+## Topology & System Design
