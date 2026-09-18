@@ -1,4 +1,38 @@
- MAKO ⚡ — Decentralized Serverless Edge Runtime
+<p align="center">
+  <img src="<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Monolith Dark Base Plate -->
+  <rect width="512" height="512" rx="112" fill="#09090B" />
+  <rect width="510" height="510" x="1" y="1" rx="111" fill="none" stroke="#27272A" stroke-width="2" />
+
+  <!-- THE DORSAL-M (Unmistakable M + Twin Mako Fins + Sonic Cone) -->
+  <g transform="translate(0, 0)">
+    <!-- Primary Titanium White 'M' Body -->
+    <path d="
+      M 115,380 
+      L 155,175 
+      C 165,135 185,120 205,125 
+      C 200,165 215,225 256,285 
+      C 297,225 312,165 307,125 
+      C 327,120 347,135 357,175 
+      L 397,380 
+      L 335,380 
+      L 305,245 
+      L 256,310 
+      L 207,245 
+      L 177,380 
+      Z
+    " fill="#FFFFFF" />
+
+    <!-- Center Supersonic Shockwave Core (Electric Cyan) -->
+    <polygon points="256,155 272,215 256,250 240,215" fill="#00F5D4" />
+
+    <!-- Trailing Edge Hydrodynamic Shading (Subtle Graphite Contrast) -->
+    <polygon points="256,285 207,245 177,380 200,380 218,295" fill="#71717A" opacity="0.3" />
+    <polygon points="256,285 305,245 335,380 312,380 294,295" fill="#71717A" opacity="0.3" />
+  </g>
+</svg>
+" alt="MAKO Logo" width="60%" />
+</p> MAKO ⚡ — Decentralized Serverless Edge Runtime
 
 > A masterless, zero-cloud-bill AWS Lambda alternative powered by Rust, WebAssembly, and LibP2P.
 
